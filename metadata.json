@@ -1,0 +1,10 @@
+{
+  "name": "PushUp Bird",
+  "description": "Motion-controlled browser arcade exergaming app connecting Flappy Bird mechanics with real-time push-up repetitions tracked via webcam.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
