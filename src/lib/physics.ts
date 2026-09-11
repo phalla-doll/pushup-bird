@@ -1,22 +1,20 @@
 export const PHYSICS = {
-  // World dimensions (virtual canvas coordinate space)
-  CANVAS_WIDTH: 480,
-  CANVAS_HEIGHT: 640,
-  GROUND_HEIGHT: 70,
+  // Virtual canvas reference dimensions (height is constant 720, width expands to fill screen)
+  VIRTUAL_HEIGHT: 720,
+  GROUND_HEIGHT: 76,
 
   // Bird parameters
-  BIRD_X: 110,
-  BIRD_RADIUS: 17,
-  GRAVITY: 0.12, // px/frame^2 (halved from standard Flappy Bird)
-  FLAP_IMPULSE: -8.2, // px/frame (high initial boost)
-  TERMINAL_VELOCITY: 4.5, // px/frame (prevents rapid free-fall drops)
-  GLIDE_FLOAT_DAMPING: 0.985, // Velocity drag at apex (~300ms hang-time float)
+  BIRD_RADIUS: 19,
+  GRAVITY: 0.13, // px/frame^2 (tuned for push-up exercise tempo)
+  FLAP_IMPULSE: -8.8, // px/frame (high initial boost)
+  TERMINAL_VELOCITY: 4.8, // px/frame
+  GLIDE_FLOAT_DAMPING: 0.985, // Velocity drag at apex
 
   // Obstacle parameters
-  PIPE_SPEED: 1.4, // px/frame (relaxed pace for human cadence)
-  PIPE_GAP: 165, // px (generous opening 155-170px)
-  PIPE_SPACING: 410, // px between consecutive pipes (1 pipe per ~2s)
-  PIPE_WIDTH: 68, // px
+  PIPE_SPEED: 1.6, // px/frame
+  PIPE_GAP: 180, // px (generous opening for exergaming cadence)
+  PIPE_SPACING: 420, // px between consecutive pipes
+  PIPE_WIDTH: 74, // px
   MIN_PIPE_HEIGHT: 80, // px minimum pipe protrusion
 } as const;
 

@@ -39,6 +39,8 @@ interface GameStoreState {
   setManualMode: (enabled: boolean) => void;
   startCountdown: () => void;
   startGame: () => void;
+  pauseGame: () => void;
+  resumeGame: () => void;
   endGame: () => void;
   resetGame: () => void;
   resetCalibrationToDefaults: () => void;
@@ -196,6 +198,20 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
         streak: 0,
       },
     }));
+  },
+
+  pauseGame: () => {
+    const currentStatus = get().status;
+    if (currentStatus === 'playing') {
+      set({ status: 'paused' });
+    }
+  },
+
+  resumeGame: () => {
+    const currentStatus = get().status;
+    if (currentStatus === 'paused') {
+      set({ status: 'playing' });
+    }
   },
 
   endGame: () => {

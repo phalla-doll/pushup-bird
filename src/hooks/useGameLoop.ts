@@ -16,7 +16,7 @@ export function useGameLoop({ canvasRef }: UseGameLoopProps) {
   } = useGameStore();
 
   const birdRef = useRef<BirdState>({
-    y: PHYSICS.CANVAS_HEIGHT / 2 - 40,
+    y: PHYSICS.VIRTUAL_HEIGHT / 2 - 30,
     vy: 0,
     rotation: 0,
     flapTime: 0,
@@ -29,12 +29,29 @@ export function useGameLoop({ canvasRef }: UseGameLoopProps) {
   const lastFlapEventRef = useRef<number>(flapEvent);
   const animationFrameIdRef = useRef<number | null>(null);
   const nextPipeIdRef = useRef<number>(1);
+  const virtualWidthRef = useRef<number>(1280);
 
-  // Initialize bird position when transitioning to playing or idle
+  function createPipe(xPos: number, vHeight: number = PHYSICS.VIRTUAL_HEIGHT): PipePair {
+    const playArea = vHeight - PHYSICS.GROUND_HEIGHT;
+    const maxTop = playArea - PHYSICS.PIPE_GAP - PHYSICS.MIN_PIPE_HEIGHT;
+    const minTop = PHYSICS.MIN_PIPE_HEIGHT;
+    const topHeight = Math.floor(Math.random() * (maxTop - minTop + 1)) + minTop;
+    const bottomHeight = playArea - topHeight - PHYSICS.PIPE_GAP;
+
+    return {
+      id: nextPipeIdRef.current++,
+      x: xPos,
+      topHeight,
+      bottomHeight,
+      passed: false,
+    };
+  }
+
+  // Initialize bird position when transitioning state
   useEffect(() => {
     if (status === 'countdown' || status === 'idle') {
       birdRef.current = {
-        y: PHYSICS.CANVAS_HEIGHT / 2 - 30,
+        y: PHYSICS.VIRTUAL_HEIGHT / 2 - 30,
         vy: 0,
         rotation: 0,
         flapTime: 0,
@@ -43,21 +60,22 @@ export function useGameLoop({ canvasRef }: UseGameLoopProps) {
       particlesRef.current = [];
     } else if (status === 'playing') {
       birdRef.current = {
-        y: PHYSICS.CANVAS_HEIGHT / 2 - 30,
-        vy: -3.5, // gentle initial lift
+        y: PHYSICS.VIRTUAL_HEIGHT / 2 - 30,
+        vy: -3.8, // gentle initial lift
         rotation: -0.2,
         flapTime: 0,
       };
-      // Spawn initial pipe pair after safe distance
+      const vWidth = virtualWidthRef.current;
+      // Spawn initial pipe pair after safe run-up distance
       pipesRef.current = [
-        createPipe(PHYSICS.CANVAS_WIDTH + 140),
-        createPipe(PHYSICS.CANVAS_WIDTH + 140 + PHYSICS.PIPE_SPACING),
+        createPipe(vWidth + 80),
+        createPipe(vWidth + 80 + PHYSICS.PIPE_SPACING),
       ];
       particlesRef.current = [];
     }
   }, [status]);
 
-  // Handle flap impulse triggered from vision detector or spacebar
+  // Handle flap impulse triggered from vision detector, spacebar, or tap
   useEffect(() => {
     if (flapEvent > lastFlapEventRef.current) {
       lastFlapEventRef.current = flapEvent;
@@ -65,15 +83,18 @@ export function useGameLoop({ canvasRef }: UseGameLoopProps) {
         birdRef.current.vy = PHYSICS.FLAP_IMPULSE;
         birdRef.current.rotation = -0.42;
 
+        const vWidth = virtualWidthRef.current;
+        const birdX = Math.max(120, Math.min(260, Math.round(vWidth * 0.20)));
+
         // Spawn sweat / energy burst particles
-        for (let i = 0; i < 9; i++) {
+        for (let i = 0; i < 10; i++) {
           particlesRef.current.push({
-            x: PHYSICS.BIRD_X - 10 + (Math.random() * 8 - 4),
-            y: birdRef.current.y + (Math.random() * 12 - 6),
-            vx: -Math.random() * 2.5 - 1.2,
-            vy: (Math.random() - 0.5) * 2.5,
-            size: Math.random() * 4 + 2,
-            color: Math.random() > 0.4 ? '#38bdf8' : '#fed7aa', // sweat blue or feather gold
+            x: birdX - 10 + (Math.random() * 8 - 4),
+            y: birdRef.current.y + (Math.random() * 14 - 7),
+            vx: -Math.random() * 2.8 - 1.4,
+            vy: (Math.random() - 0.5) * 3,
+            size: Math.random() * 4.5 + 2,
+            color: Math.random() > 0.4 ? '#38bdf8' : '#fed7aa', // sweat cyan or feather gold
             alpha: 1,
             life: 0,
             maxLife: 24,
@@ -82,23 +103,6 @@ export function useGameLoop({ canvasRef }: UseGameLoopProps) {
       }
     }
   }, [flapEvent, status]);
-
-  function createPipe(xPos: number): PipePair {
-    const playArea = PHYSICS.CANVAS_HEIGHT - PHYSICS.GROUND_HEIGHT;
-    const maxTop = playArea - PHYSICS.PIPE_GAP - PHYSICS.MIN_PIPE_HEIGHT;
-    const minTop = PHYSICS.MIN_PIPE_HEIGHT;
-    const topHeight = Math.floor(Math.random() * (maxTop - minTop + 1)) + minTop;
-    const bottomHeight = playArea - topHeight - PHYSICS.PIPE_GAP;
-
-    const pipe: PipePair = {
-      id: nextPipeIdRef.current++,
-      x: xPos,
-      topHeight,
-      bottomHeight,
-      passed: false,
-    };
-    return pipe;
-  }
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -111,27 +115,43 @@ export function useGameLoop({ canvasRef }: UseGameLoopProps) {
     const loop = (timestamp: number) => {
       if (!isLoopRunning) return;
 
-      // 1. UPDATE STATE
+      // Calculate dynamic high-DPI full-screen dimensions
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const displayWidth = Math.max(320, Math.round(canvas.clientWidth * dpr));
+      const displayHeight = Math.max(320, Math.round(canvas.clientHeight * dpr));
+
+      if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
+        canvas.width = displayWidth;
+        canvas.height = displayHeight;
+      }
+
+      const virtualHeight = PHYSICS.VIRTUAL_HEIGHT;
+      const scale = displayHeight / virtualHeight;
+      const virtualWidth = displayWidth / scale;
+      virtualWidthRef.current = virtualWidth;
+      const birdX = Math.max(120, Math.min(260, Math.round(virtualWidth * 0.20)));
+
+      // 1. UPDATE SIMULATION
       if (status === 'playing') {
         // Update bird physics
         birdRef.current = updateBirdPhysics(birdRef.current);
 
         // Ground collision
-        const groundLevel = PHYSICS.CANVAS_HEIGHT - PHYSICS.GROUND_HEIGHT;
+        const groundLevel = virtualHeight - PHYSICS.GROUND_HEIGHT;
         if (birdRef.current.y + PHYSICS.BIRD_RADIUS >= groundLevel) {
           birdRef.current.y = groundLevel - PHYSICS.BIRD_RADIUS;
           endGame();
         }
 
         // Ceiling collision
-        if (birdRef.current.y - PHYSICS.BIRD_RADIUS <= 4) {
-          birdRef.current.y = PHYSICS.BIRD_RADIUS + 4;
+        if (birdRef.current.y - PHYSICS.BIRD_RADIUS <= 6) {
+          birdRef.current.y = PHYSICS.BIRD_RADIUS + 6;
           birdRef.current.vy = 0;
         }
 
         // Update ground & cloud scroll
         groundOffsetRef.current = (groundOffsetRef.current + PHYSICS.PIPE_SPEED) % 24;
-        cloudOffsetRef.current = (cloudOffsetRef.current + 0.35) % PHYSICS.CANVAS_WIDTH;
+        cloudOffsetRef.current = (cloudOffsetRef.current + 0.35) % (virtualWidth * 2);
 
         // Update pipes
         const pipes = pipesRef.current;
@@ -140,14 +160,14 @@ export function useGameLoop({ canvasRef }: UseGameLoopProps) {
           pipe.x -= PHYSICS.PIPE_SPEED;
 
           // Score detection
-          if (!pipe.passed && pipe.x + PHYSICS.PIPE_WIDTH < PHYSICS.BIRD_X) {
+          if (!pipe.passed && pipe.x + PHYSICS.PIPE_WIDTH < birdX) {
             pipe.passed = true;
             incrementScore();
           }
 
           // Collision detection: Top pipe
           const hitTop = checkCircleRectCollision(
-            PHYSICS.BIRD_X,
+            birdX,
             birdRef.current.y,
             PHYSICS.BIRD_RADIUS,
             pipe.x,
@@ -157,9 +177,9 @@ export function useGameLoop({ canvasRef }: UseGameLoopProps) {
           );
 
           // Collision detection: Bottom pipe
-          const bottomPipeY = PHYSICS.CANVAS_HEIGHT - PHYSICS.GROUND_HEIGHT - pipe.bottomHeight;
+          const bottomPipeY = virtualHeight - PHYSICS.GROUND_HEIGHT - pipe.bottomHeight;
           const hitBottom = checkCircleRectCollision(
-            PHYSICS.BIRD_X,
+            birdX,
             birdRef.current.y,
             PHYSICS.BIRD_RADIUS,
             pipe.x,
@@ -174,14 +194,14 @@ export function useGameLoop({ canvasRef }: UseGameLoopProps) {
         }
 
         // Remove off-screen pipes
-        while (pipes.length > 0 && pipes[0].x + PHYSICS.PIPE_WIDTH < -50) {
+        while (pipes.length > 0 && pipes[0].x + PHYSICS.PIPE_WIDTH < -100) {
           pipes.shift();
         }
 
-        // Spawn new pipes to maintain spacing
+        // Spawn new pipes to maintain obstacle pacing
         const lastPipe = pipes[pipes.length - 1];
-        if (lastPipe && lastPipe.x <= PHYSICS.CANVAS_WIDTH - PHYSICS.PIPE_SPACING) {
-          pipes.push(createPipe(PHYSICS.CANVAS_WIDTH + 20));
+        if (!lastPipe || lastPipe.x <= virtualWidth - PHYSICS.PIPE_SPACING) {
+          pipes.push(createPipe(virtualWidth + 30, virtualHeight));
         }
 
         // Update particles
@@ -190,24 +210,29 @@ export function useGameLoop({ canvasRef }: UseGameLoopProps) {
           const p = particles[i];
           p.x += p.vx;
           p.y += p.vy;
-          p.vy += 0.05; // gravity
+          p.vy += 0.06; // subtle gravity
           p.life++;
           p.alpha = 1 - p.life / p.maxLife;
           if (p.life >= p.maxLife) {
             particles.splice(i, 1);
           }
         }
+      } else if (status === 'paused') {
+        // Paused: do not update physics, keep exact freeze frame
       } else {
         // Idle/countdown floating wave
-        const idleFloat = Math.sin(timestamp * 0.005) * 7;
-        birdRef.current.y = PHYSICS.CANVAS_HEIGHT / 2 - 30 + idleFloat;
+        const idleFloat = Math.sin(timestamp * 0.005) * 8;
+        birdRef.current.y = virtualHeight / 2 - 30 + idleFloat;
         birdRef.current.rotation = Math.sin(timestamp * 0.005) * 0.08;
         groundOffsetRef.current = (groundOffsetRef.current + 0.8) % 24;
-        cloudOffsetRef.current = (cloudOffsetRef.current + 0.2) % PHYSICS.CANVAS_WIDTH;
+        cloudOffsetRef.current = (cloudOffsetRef.current + 0.2) % (virtualWidth * 2);
       }
 
-      // 2. RENDER STAGE
-      renderScene(ctx, timestamp);
+      // 2. RENDER SCENE (Scaled to Screen Resolution)
+      ctx.save();
+      ctx.scale(scale, scale);
+      renderScene(ctx, timestamp, virtualWidth, virtualHeight, birdX);
+      ctx.restore();
 
       animationFrameIdRef.current = requestAnimationFrame(loop);
     };
@@ -222,30 +247,51 @@ export function useGameLoop({ canvasRef }: UseGameLoopProps) {
     };
   }, [status, incrementScore, endGame]);
 
-  // Scene rendering pipeline
-  const renderScene = (ctx: CanvasRenderingContext2D, timestamp: number) => {
-    const { CANVAS_WIDTH, CANVAS_HEIGHT, GROUND_HEIGHT, BIRD_X, BIRD_RADIUS } = PHYSICS;
+  // Full-screen arcade scene rendering pipeline
+  const renderScene = (
+    ctx: CanvasRenderingContext2D,
+    timestamp: number,
+    vWidth: number,
+    vHeight: number,
+    birdX: number
+  ) => {
+    const { GROUND_HEIGHT, BIRD_RADIUS } = PHYSICS;
 
     // A. Sky Background Gradient
-    const skyGradient = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT - GROUND_HEIGHT);
+    const skyGradient = ctx.createLinearGradient(0, 0, 0, vHeight - GROUND_HEIGHT);
     skyGradient.addColorStop(0, '#0284c7'); // Rich Sky Blue
-    skyGradient.addColorStop(0.65, '#38bdf8'); // Bright Cyan
-    skyGradient.addColorStop(1, '#bae6fd'); // Soft Pale Blue
+    skyGradient.addColorStop(0.6, '#38bdf8'); // Bright Cyan
+    skyGradient.addColorStop(0.9, '#7dd3fc'); // Soft Blue
+    skyGradient.addColorStop(1, '#bae6fd'); // Horizon glow
     ctx.fillStyle = skyGradient;
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    ctx.fillRect(0, 0, vWidth, vHeight);
 
-    // B. Clouds (Slow Parallax)
+    // Subtle sun in upper right sky
+    const sunX = vWidth - 140;
+    const sunY = 90;
+    const sunGrad = ctx.createRadialGradient(sunX, sunY, 10, sunX, sunY, 90);
+    sunGrad.addColorStop(0, 'rgba(254, 240, 138, 0.9)');
+    sunGrad.addColorStop(0.4, 'rgba(253, 224, 71, 0.35)');
+    sunGrad.addColorStop(1, 'rgba(253, 224, 71, 0)');
+    ctx.fillStyle = sunGrad;
+    ctx.beginPath();
+    ctx.arc(sunX, sunY, 90, 0, Math.PI * 2);
+    ctx.fill();
+
+    // B. Clouds (Multi-layer Parallax)
     ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
-    drawCloud(ctx, 60 - (cloudOffsetRef.current * 0.6) % CANVAS_WIDTH, 70, 48);
-    drawCloud(ctx, 280 - (cloudOffsetRef.current * 0.6) % CANVAS_WIDTH, 110, 60);
-    drawCloud(ctx, 490 - (cloudOffsetRef.current * 0.6) % CANVAS_WIDTH, 60, 52);
+    const cloudLoop = Math.max(vWidth + 200, 1200);
+    for (let cx = 40; cx < vWidth + 400; cx += 320) {
+      const renderCx = (cx - (cloudOffsetRef.current * 0.6)) % cloudLoop;
+      drawCloud(ctx, renderCx, 70 + ((cx * 13) % 80), 55);
+    }
 
     // C. Distant City / Calisthenics Arena Skyline
-    ctx.fillStyle = 'rgba(224, 242, 254, 0.6)';
-    const skylineY = CANVAS_HEIGHT - GROUND_HEIGHT - 65;
-    for (let bx = -20; bx < CANVAS_WIDTH + 60; bx += 48) {
-      const bh = 24 + ((bx * 37) % 40);
-      ctx.fillRect(bx, skylineY - bh, 36, bh + 65);
+    ctx.fillStyle = 'rgba(224, 242, 254, 0.55)';
+    const skylineY = vHeight - GROUND_HEIGHT - 65;
+    for (let bx = -40; bx < vWidth + 80; bx += 48) {
+      const bh = 24 + ((Math.abs(bx) * 37) % 45);
+      ctx.fillRect(bx, skylineY - bh, 38, bh + 65);
     }
 
     // D. Render Pipes
@@ -253,27 +299,27 @@ export function useGameLoop({ canvasRef }: UseGameLoopProps) {
     for (let i = 0; i < pipes.length; i++) {
       const p = pipes[i];
       drawPipe(ctx, p.x, 0, PHYSICS.PIPE_WIDTH, p.topHeight, true);
-      const bottomY = CANVAS_HEIGHT - GROUND_HEIGHT - p.bottomHeight;
+      const bottomY = vHeight - GROUND_HEIGHT - p.bottomHeight;
       drawPipe(ctx, p.x, bottomY, PHYSICS.PIPE_WIDTH, p.bottomHeight, false);
     }
 
     // E. Render Ground
-    const groundY = CANVAS_HEIGHT - GROUND_HEIGHT;
-    // Ground Base
-    ctx.fillStyle = '#15803d'; // Rich green turf
-    ctx.fillRect(0, groundY, CANVAS_WIDTH, 14);
+    const groundY = vHeight - GROUND_HEIGHT;
+    // Ground Base (rich turf)
+    ctx.fillStyle = '#15803d';
+    ctx.fillRect(0, groundY, vWidth, 16);
 
     // Underground soil
-    ctx.fillStyle = '#b45309'; // Earthy amber/brown
-    ctx.fillRect(0, groundY + 14, CANVAS_WIDTH, GROUND_HEIGHT - 14);
+    ctx.fillStyle = '#9a3412';
+    ctx.fillRect(0, groundY + 16, vWidth, GROUND_HEIGHT - 16);
 
     // Ground grass blade highlights (scrolling)
     ctx.fillStyle = '#22c55e';
-    for (let x = -24; x < CANVAS_WIDTH + 24; x += 24) {
+    for (let x = -24; x < vWidth + 48; x += 24) {
       const renderX = x - groundOffsetRef.current;
       ctx.beginPath();
       ctx.moveTo(renderX, groundY);
-      ctx.lineTo(renderX + 12, groundY + 12);
+      ctx.lineTo(renderX + 12, groundY + 13);
       ctx.lineTo(renderX + 24, groundY);
       ctx.fill();
     }
@@ -293,16 +339,16 @@ export function useGameLoop({ canvasRef }: UseGameLoopProps) {
 
     // G. Render Athletic Flappy Bird
     ctx.save();
-    ctx.translate(BIRD_X, birdRef.current.y);
+    ctx.translate(birdX, birdRef.current.y);
     ctx.rotate(birdRef.current.rotation);
 
-    // Body shadow underneath
+    // Subtle drop shadow underneath
     ctx.beginPath();
-    ctx.arc(0, 3, BIRD_RADIUS, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.12)';
+    ctx.arc(0, 4, BIRD_RADIUS, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.14)';
     ctx.fill();
 
-    // Main Body (Vibrant Yellow-Gold)
+    // Main Body (Vibrant Gold)
     ctx.beginPath();
     ctx.arc(0, 0, BIRD_RADIUS, 0, Math.PI * 2);
     ctx.fillStyle = '#f59e0b'; // Amber 500
@@ -317,44 +363,44 @@ export function useGameLoop({ canvasRef }: UseGameLoopProps) {
     ctx.fillStyle = '#fef08a';
     ctx.fill();
 
-    // Athletic Red Sweatband across forehead!
+    // Athletic Red Sweatband across forehead
     ctx.fillStyle = '#ef4444'; // Bright Red
-    ctx.fillRect(-BIRD_RADIUS + 2, -BIRD_RADIUS + 3, BIRD_RADIUS * 2 - 4, 7);
+    ctx.fillRect(-BIRD_RADIUS + 2, -BIRD_RADIUS + 3, BIRD_RADIUS * 2 - 4, 8);
     ctx.strokeStyle = '#991b1b';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(-BIRD_RADIUS + 2, -BIRD_RADIUS + 3, BIRD_RADIUS * 2 - 4, 7);
+    ctx.lineWidth = 1.2;
+    ctx.strokeRect(-BIRD_RADIUS + 2, -BIRD_RADIUS + 3, BIRD_RADIUS * 2 - 4, 8);
     // Sweatband knot detail
     ctx.beginPath();
-    ctx.arc(-BIRD_RADIUS + 2, -BIRD_RADIUS + 6, 3, 0, Math.PI * 2);
+    ctx.arc(-BIRD_RADIUS + 2, -BIRD_RADIUS + 7, 3.5, 0, Math.PI * 2);
     ctx.fillStyle = '#dc2626';
     ctx.fill();
 
     // Big Cartoon Eye
     ctx.beginPath();
-    ctx.arc(6, -4, 6.5, 0, Math.PI * 2);
+    ctx.arc(7, -4, 7, 0, Math.PI * 2);
     ctx.fillStyle = '#ffffff';
     ctx.fill();
     ctx.strokeStyle = '#78350f';
-    ctx.lineWidth = 1.8;
+    ctx.lineWidth = 2;
     ctx.stroke();
 
     // Pupil
     ctx.beginPath();
-    ctx.arc(8, -4, 3, 0, Math.PI * 2);
+    ctx.arc(9, -4, 3.2, 0, Math.PI * 2);
     ctx.fillStyle = '#0f172a';
     ctx.fill();
 
     // Eye catchlight
     ctx.beginPath();
-    ctx.arc(7.5, -5.5, 1.2, 0, Math.PI * 2);
+    ctx.arc(8.5, -5.5, 1.3, 0, Math.PI * 2);
     ctx.fillStyle = '#ffffff';
     ctx.fill();
 
     // Beak
     ctx.beginPath();
-    ctx.moveTo(11, -1);
-    ctx.lineTo(23, 2);
-    ctx.lineTo(11, 7);
+    ctx.moveTo(12, -1.5);
+    ctx.lineTo(25, 2);
+    ctx.lineTo(12, 7.5);
     ctx.closePath();
     ctx.fillStyle = '#ea580c'; // Vibrant Orange
     ctx.fill();
@@ -362,19 +408,19 @@ export function useGameLoop({ canvasRef }: UseGameLoopProps) {
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // Beak middle crease
+    // Beak crease
     ctx.beginPath();
-    ctx.moveTo(11, 2.5);
-    ctx.lineTo(20, 2.5);
+    ctx.moveTo(12, 2.5);
+    ctx.lineTo(21, 2.5);
     ctx.stroke();
 
     // Wing flapping animation
-    const wingAngle = Math.sin(timestamp * 0.015 + birdRef.current.flapTime) * 0.5;
+    const wingAngle = Math.sin(timestamp * 0.015 + birdRef.current.flapTime) * 0.55;
     ctx.save();
     ctx.translate(-7, 2);
     ctx.rotate(wingAngle);
     ctx.beginPath();
-    ctx.ellipse(0, 0, 9, 6, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, 10, 6.5, 0, 0, Math.PI * 2);
     ctx.fillStyle = '#ffffff';
     ctx.fill();
     ctx.strokeStyle = '#78350f';
@@ -385,7 +431,7 @@ export function useGameLoop({ canvasRef }: UseGameLoopProps) {
     ctx.restore();
   };
 
-  // Helper to draw clean retro arcade pipes with collar rim & 3D highlight
+  // Draw retro arcade pipes with collar rim & 3D gradient highlight
   const drawPipe = (
     ctx: CanvasRenderingContext2D,
     x: number,
@@ -396,15 +442,14 @@ export function useGameLoop({ canvasRef }: UseGameLoopProps) {
   ) => {
     if (h <= 0) return;
 
-    const rimHeight = 24;
-    const rimOverhang = 5;
+    const rimHeight = 26;
+    const rimOverhang = 6;
 
     // 1. Pipe Body
     const bodyY = isTop ? y : y + rimHeight;
     const bodyH = Math.max(0, isTop ? h - rimHeight : h - rimHeight);
 
     if (bodyH > 0) {
-      // Body gradient
       const bodyGrad = ctx.createLinearGradient(x, 0, x + w, 0);
       bodyGrad.addColorStop(0, '#15803d');
       bodyGrad.addColorStop(0.2, '#4ade80'); // Gloss highlight

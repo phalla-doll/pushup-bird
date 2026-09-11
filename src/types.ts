@@ -1,4 +1,4 @@
-export type GameStatus = 'idle' | 'calibrating' | 'countdown' | 'playing' | 'gameover';
+export type GameStatus = 'idle' | 'calibrating' | 'countdown' | 'playing' | 'paused' | 'gameover';
 
 export type PushUpState = 'TOP' | 'GOING_DOWN' | 'BOTTOM' | 'PUSHING_UP' | 'COOLDOWN';
 
