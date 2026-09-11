@@ -68,7 +68,7 @@ export function useFaceTracker({ videoRef, canvasOverlayRef }: UseFaceTrackerPro
           setTrackingStatus('lost');
         }
       } catch (err) {
-        console.error('Camera or Vision Initialization error:', err);
+        console.warn('Camera permission not granted or unavailable (Manual Spacebar Mode available):', err);
         setCameraPermission(false);
         setTrackingStatus('lost');
       }
