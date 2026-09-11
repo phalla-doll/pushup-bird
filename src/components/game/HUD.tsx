@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useGameStore } from '../../store/useGameStore';
 import { usePushUpDetector } from '../../hooks/usePushUpDetector';
 import { CameraFeed } from '../camera/CameraFeed';
@@ -21,6 +21,35 @@ export const HUD: React.FC<HUDProps> = ({ onOpenCalibration }) => {
 
   const { progressPercent, isTargetDepthReached, pushUpState } = usePushUpDetector();
 
+  // Pulse animation states for Score and Reps
+  const [scorePulse, setScorePulse] = useState(false);
+  const [repPulse, setRepPulse] = useState(false);
+
+  const prevScoreRef = useRef(stats.score);
+  const prevRepsRef = useRef(stats.reps);
+
+  // Trigger pulse whenever score increases (pipe cleared)
+  useEffect(() => {
+    if (stats.score > prevScoreRef.current) {
+      setScorePulse(true);
+      const timer = setTimeout(() => setScorePulse(false), 360);
+      prevScoreRef.current = stats.score;
+      return () => clearTimeout(timer);
+    }
+    prevScoreRef.current = stats.score;
+  }, [stats.score]);
+
+  // Trigger pulse whenever reps increase (push-up rep completed)
+  useEffect(() => {
+    if (stats.reps > prevRepsRef.current) {
+      setRepPulse(true);
+      const timer = setTimeout(() => setRepPulse(false), 390);
+      prevRepsRef.current = stats.reps;
+      return () => clearTimeout(timer);
+    }
+    prevRepsRef.current = stats.reps;
+  }, [stats.reps]);
+
   return (
     <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-4 sm:p-6 z-20">
       {/* Top Row: Score, Reps Badge, PiP Stream & Quick Controls */}
@@ -30,17 +59,33 @@ export const HUD: React.FC<HUDProps> = ({ onOpenCalibration }) => {
           {/* Rep Counter Badge */}
           <div
             id="rep-counter-badge"
-            className="flex items-center gap-2.5 px-3.5 py-2 rounded-2xl bg-slate-900/90 border border-amber-500/40 shadow-xl backdrop-blur-md"
+            className={`flex items-center gap-2.5 px-3.5 py-2 rounded-2xl bg-slate-900/90 border shadow-xl backdrop-blur-md transition-all duration-200 will-change-transform ${
+              repPulse
+                ? 'animate-rep-pulse border-amber-400 bg-slate-800/95 ring-2 ring-amber-400/50 shadow-amber-500/30'
+                : 'border-amber-500/40'
+            }`}
           >
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-slate-950 shadow-md">
+            <div
+              className={`w-8 h-8 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-slate-950 shadow-md transition-transform duration-200 ${
+                repPulse ? 'scale-115 rotate-6' : ''
+              }`}
+            >
               <Dumbbell className="w-4 h-4" />
             </div>
             <div className="flex flex-col">
-              <span className="text-[10px] uppercase font-bold tracking-wider text-amber-400">
+              <span
+                className={`text-[10px] uppercase font-bold tracking-wider transition-colors ${
+                  repPulse ? 'text-amber-300' : 'text-amber-400'
+                }`}
+              >
                 Push-Up Reps
               </span>
               <div className="flex items-baseline gap-1.5">
-                <span className="font-arcade text-lg text-white leading-none">
+                <span
+                  className={`font-arcade text-lg leading-none transition-all duration-200 ${
+                    repPulse ? 'text-amber-300 scale-110 inline-block drop-shadow-[0_0_8px_rgba(251,191,36,0.8)]' : 'text-white'
+                  }`}
+                >
                   {stats.reps}
                 </span>
                 <span className="text-[10px] text-slate-400">reps</span>
@@ -68,9 +113,13 @@ export const HUD: React.FC<HUDProps> = ({ onOpenCalibration }) => {
         <div className="flex flex-col items-center">
           <div
             id="giant-score-display"
-            className="font-arcade text-4xl sm:text-5xl text-white drop-shadow-[0_4px_12px_rgba(0,0,0,0.8)] select-none"
+            className={`font-arcade text-4xl sm:text-5xl text-white drop-shadow-[0_4px_12px_rgba(0,0,0,0.8)] select-none transition-all duration-150 will-change-transform ${
+              scorePulse ? 'animate-score-pulse text-amber-300 drop-shadow-[0_0_20px_rgba(251,191,36,0.9)]' : ''
+            }`}
             style={{
-              textShadow: '3px 3px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000',
+              textShadow: scorePulse
+                ? '3px 3px 0 #78350f, -2px -2px 0 #78350f, 2px -2px 0 #78350f, -2px 2px 0 #78350f'
+                : '3px 3px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000',
             }}
           >
             {stats.score}
